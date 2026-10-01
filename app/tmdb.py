@@ -52,3 +52,16 @@ async def get_actor_movies(actor_id: int):
         response.raise_for_status()
 
     return response.json()["cast"]
+
+async def get_movie_cast(movie_id: int):
+    url = f"{BASE_URL}/movie/{movie_id}/credits"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            url,
+            headers=headers
+        )
+
+        response.raise_for_status()
+
+    return response.json()["cast"]
