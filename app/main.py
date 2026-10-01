@@ -1,5 +1,7 @@
 import asyncio
 
+from collections import defaultdict
+
 from fastapi import FastAPI, Query
 
 from app.tmdb import search_actors, get_actor_movies, get_movie_cast
@@ -66,8 +68,10 @@ async def actor_movies(actor_id: int):
         "movies": movies
     }
 
-@app.get("/actors/shared-movies")
-async def shared_movies(ids: str = Query(..., description="Comma-separated actor IDs")):
+@app.get("/actors/recommendations")
+async def actor_recommendations(
+    ids: str = Query(..., description="Comma-separated actor IDs")
+):
     actor_ids = [int(actor_id.strip()) for actor_id in ids.split(",")]
 
     if len(actor_ids) < 2:
@@ -75,62 +79,170 @@ async def shared_movies(ids: str = Query(..., description="Comma-separated actor
             "error": "Please provide at least two actor IDs."
         }
 
+    # --------------------------------------------------
+    # 1. Get filmographies for selected actors
+    # --------------------------------------------------
+
     filmographies = await asyncio.gather(
         *(get_actor_movies(actor_id) for actor_id in actor_ids)
     )
 
-    movie_maps = []
+    searched_actor_movie_ids = {
+        movie["id"]
+        for filmography in filmographies
+        for movie in filmography
+    }
 
-    for movies in filmographies:
-        movie_maps.append({
-            movie["id"]: movie
-            for movie in movies
-        })
+    # --------------------------------------------------
+    # 2. Find collaborators
+    # --------------------------------------------------
 
-    shared_ids = set(movie_maps[0].keys())
+    collaborator_connections = defaultdict(set)
 
-    for movie_map in movie_maps[1:]:
-        shared_ids &= set(movie_map.keys())
+    for actor_id, movies in zip(actor_ids, filmographies):
 
-    shared = []
+        top_movies = sorted(
+            movies,
+            key=lambda movie: movie.get("popularity") or 0,
+            reverse=True
+        )[:5]
 
-    for movie_id in shared_ids:
-        movie = movie_maps[0][movie_id]
+        casts = await asyncio.gather(
+            *(get_movie_cast(movie["id"]) for movie in top_movies)
+        )
 
-        shared.append({
+        for cast in casts:
+            for person in cast[:15]:
+
+                co_star_id = person["id"]
+
+                if co_star_id not in actor_ids:
+                    collaborator_connections[co_star_id].add(actor_id)
+
+    # --------------------------------------------------
+    # 3. Get collaborator filmographies concurrently
+    # --------------------------------------------------
+
+    collaborator_ids = list(collaborator_connections.keys())
+
+    collaborator_filmographies = await asyncio.gather(
+        *(get_actor_movies(actor_id) for actor_id in collaborator_ids)
+    )
+
+    # --------------------------------------------------
+    # 4. Build candidate movie pool
+    # --------------------------------------------------
+
+    candidate_movies = {}
+
+    for collaborator_id, movies in zip(
+        collaborator_ids,
+        collaborator_filmographies
+    ):
+        connected_to = collaborator_connections[collaborator_id]
+
+        for movie in movies:
+
+            movie_id = movie["id"]
+
+            # Don't recommend movies the searched actors
+            # already appeared in
+            if movie_id in searched_actor_movie_ids:
+                continue
+
+            if movie_id not in candidate_movies:
+                candidate_movies[movie_id] = {
+                    "id": movie_id,
+                    "title": movie["title"],
+                    "release_date": movie.get("release_date"),
+                    "vote_average": movie.get("vote_average") or 0,
+                    "vote_count": movie.get("vote_count") or 0,
+                    "popularity": movie.get("popularity") or 0,
+                    "graph_paths": 0,
+                    "connected_actor_ids": set()
+                }
+
+            candidate_movies[movie_id]["graph_paths"] += 1
+
+            candidate_movies[movie_id]["connected_actor_ids"].update(
+                connected_to
+            )
+
+    # --------------------------------------------------
+    # 5. Score candidates
+    # --------------------------------------------------
+
+    recommendations = []
+
+    for movie in candidate_movies.values():
+
+        rating = movie["vote_average"]
+        vote_count = movie["vote_count"]
+        popularity = movie["popularity"]
+        graph_paths = movie["graph_paths"]
+
+        connected_actor_count = len(
+            movie["connected_actor_ids"]
+        )
+
+        # How many searched actors have a path to this movie?
+        actor_coverage = (
+            connected_actor_count / len(actor_ids)
+        )
+
+        # Score out of 100
+        connection_score = actor_coverage * 30
+
+        path_score = min(
+            graph_paths / 5,
+            1
+        ) * 15
+
+        rating_score = (
+            rating / 10
+        ) * 25
+
+        reliability_score = min(
+            vote_count / 1000,
+            1
+        ) * 15
+
+        popularity_score = min(
+            popularity / 50,
+            1
+        ) * 15
+
+        score = (
+            connection_score
+            + path_score
+            + rating_score
+            + reliability_score
+            + popularity_score
+        )
+
+        recommendations.append({
             "id": movie["id"],
             "title": movie["title"],
-            "release_date": movie.get("release_date"),
-            "vote_average": movie.get("vote_average"),
-            "popularity": movie.get("popularity")
+            "release_date": movie["release_date"],
+            "vote_average": rating,
+            "vote_count": vote_count,
+            "popularity": popularity,
+            "graph_paths": graph_paths,
+            "connected_actor_count": connected_actor_count,
+            "score": round(score, 2)
         })
 
-    shared.sort(
-        key=lambda movie: movie["popularity"] or 0,
+    # --------------------------------------------------
+    # 6. Rank and return Top 10
+    # --------------------------------------------------
+
+    recommendations.sort(
+        key=lambda movie: movie["score"],
         reverse=True
     )
 
     return {
         "actor_ids": actor_ids,
-        "shared_movies": shared,
-        "count": len(shared)
-    }
-
-@app.get("/movies/{movie_id}/cast")
-async def movie_cast(movie_id: int):
-    results = await get_movie_cast(movie_id)
-
-    cast = []
-
-    for person in results[:20]:
-        cast.append({
-            "id": person["id"],
-            "name": person["name"],
-            "character": person.get("character"),
-            "order": person.get("order")
-        })
-
-    return {
-        "movie_id": movie_id,
-        "cast": cast
+        "candidate_count": len(candidate_movies),
+        "recommendations": recommendations[:10]
     }
