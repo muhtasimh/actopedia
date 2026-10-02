@@ -2,6 +2,8 @@ import { useState } from "react";
 
 import "./App.css";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
 
 function App() {
 
@@ -22,7 +24,7 @@ function App() {
     try {
 
       const response = await fetch(
-        `http://127.0.0.1:8000/actors/search?q=${encodeURIComponent(query)}`
+        `${API_URL}/actors/search?q=${encodeURIComponent(query)}`
       );
 
       const data = await response.json();
@@ -78,7 +80,7 @@ function App() {
     try {
 
       const response = await fetch(
-        `http://127.0.0.1:8000/actors/recommendations?ids=${ids}`
+        `${API_URL}/actors/recommendations?actor_ids=${ids}`
       );
 
       const data = await response.json();
