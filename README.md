@@ -1,127 +1,276 @@
 # Actopedia
 
-Actopedia is an actor discovery and movie matching API built with FastAPI. Users can search for actors, explore filmographies, find movies shared by multiple actors, and generate movie recommendations using a graph-based recommendation algorithm.
+Actopedia is a full-stack movie discovery application that recommends movies based on the filmographies and professional connections of 2–5 selected actors or actresses.
+
+Rather than ranking movies primarily by popularity or ratings, Actopedia builds profiles of the selected stars and explores their wider collaboration networks to generate a personalized Top 10 using a custom Match Score.
 
 ## Features
 
-- Search actors using TMDB
-- Retrieve actor filmographies
-- Generate Top-10 movie recommendations from actor collaboration networks
-- Persist actors, movies, and credits in PostgreSQL
-- Automated API testing with pytest
-- Dockerized application
+- Search for actors and actresses using The Movie Database (TMDB)
+- Select between 2 and 5 stars
+- Explore movies through shared casts and collaboration networks
+- Build actor/actress profiles using movies from across their careers
+- Compare candidate movies by genre, plot descriptions, directors, and professional connections
+- Generate a ranked Top 10 with a custom Match Score
+- Display movie posters, release years, TMDB ratings, and Match Scores
+- Persist actor, movie, and credit data in PostgreSQL
+- Automated backend testing with Pytest
+- Dockerized backend
 - Continuous integration with GitHub Actions
 
 ## Tech Stack
 
-- **Backend:** Python, FastAPI
-- **Database:** PostgreSQL, SQLAlchemy
-- **External API:** TMDB
-- **Testing:** pytest, FastAPI TestClient
-- **Containerization:** Docker
-- **CI:** GitHub Actions
+### Frontend
+- React
+- Vite
+- JavaScript
+- CSS
 
-## Recommendation Algorithm
+### Backend
+- Python
+- FastAPI
+- SQLAlchemy
+- PostgreSQL
+- HTTPX
 
-Actopedia builds a collaboration graph from the careers of selected actors.
+### API
+- The Movie Database (TMDB) API
 
-For each selected actor, the algorithm:
+### Testing and DevOps
+- Pytest
+- Docker
+- GitHub Actions
 
-1. Retrieves the actor's filmography.
-2. Selects their 5 most popular movies.
-3. Retrieves up to 15 cast members from each movie.
-4. Uses those collaborators to discover additional films.
-5. Removes movies already featuring the searched actors.
-6. Scores and ranks the remaining candidates.
+## How Recommendations Work
 
-Candidate movies are ranked using five weighted signals:
+Actopedia combines film content with professional collaboration data rather than relying on a single similarity metric.
 
-| Signal | Weight |
-| --- | ---: |
-| Actor coverage | 30% |
-| Collaboration graph paths | 15% |
-| TMDB rating | 25% |
-| Vote reliability | 15% |
-| Popularity | 15% |
+### 1. Build Star Profiles
 
-In a tested two-actor search, the algorithm evaluated **6,832 candidate movies** before returning the **Top 10 recommendations**.
+For each selected actor or actress, Actopedia creates a representative film profile using movies from across their career.
 
-## Database
+The filmography is divided into early, middle, and later periods, and representative movies are selected from each period. This prevents the profile from being based entirely on a star's most recent or most popular work.
 
-Actopedia uses PostgreSQL to model the many-to-many relationship between actors and movies:
+These movies are used to build profiles containing:
+
+- Genres
+- Movie descriptions
+- Directors
+- Collaboration history
+
+### 2. Explore Collaboration Networks
+
+Actopedia examines casts from the selected stars' movies to identify collaborators.
+
+Those collaborators connect the selected stars to additional filmographies, creating a larger candidate pool of potentially relevant movies.
+
+Repeated collaborations create stronger network connections.
+
+### 3. Content-Aware Candidate Selection
+
+The collaboration graph can produce thousands of potential movies.
+
+Before retrieving detailed information for every candidate, Actopedia performs a lightweight comparison using information already available from TMDB, including:
+
+- Direct casting overlap
+- Genre overlap
+- Plot-description similarity
+- Collaboration-network connections
+
+The strongest candidates move to the final ranking stage.
+
+This reduces unnecessary API requests while allowing the recommendation engine to explore a much larger movie network.
+
+### 4. Calculate the Match Score
+
+The remaining candidates receive a Match Score out of 100 using five weighted signals:
+
+| Signal | Weight | Description |
+|---|---:|---|
+| Direct Casting Match | 30% | Measures how many of the selected stars appear directly in the movie |
+| Genre Profile | 25% | Measures how closely the movie's genres match the combined film profiles |
+| Plot Description Similarity | 20% | Compares words in movie descriptions with descriptions from the selected stars' profile movies |
+| Director Connection | 15% | Measures connections to directors appearing across the selected stars' filmographies |
+| Collaboration Network | 10% | Measures indirect connections through collaborators and repeated professional relationships |
+
+The 10 highest-scoring movies are returned as the final recommendations.
+
+TMDB ratings, vote counts, and popularity do not directly contribute to the final Match Score.
+
+## Plot Description Similarity
+
+Plot similarity is calculated using a lightweight text-comparison approach.
+
+Movie descriptions are normalized and tokenized, common words are removed, and the resulting word sets are compared using Jaccard similarity:
+
+`similarity = shared words / total unique words`
+
+A candidate movie is compared with descriptions from the selected stars' profile movies, allowing plot information to influence recommendations without requiring a machine-learning model or external AI service.
+
+## Architecture
 
 ```text
-Actor ──< Credit >── Movie
+React Frontend
+      |
+      | HTTP
+      v
+FastAPI Backend
+      |
+      +-------------------+
+      |                   |
+      v                   v
+PostgreSQL          TMDB API
+      |
+      v
+Actors / Movies / Credits
 ```
 
-The database stores actor information, movie metadata, and actor/movie credits retrieved through the API.
+The React frontend handles star selection and recommendation presentation.
+
+FastAPI provides the application API and recommendation engine. SQLAlchemy manages persisted actor, movie, and credit data in PostgreSQL, while TMDB supplies external movie metadata.
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/` | API status |
-| GET | `/actors/search?q=` | Search for actors |
-| GET | `/actors/{actor_id}/movies` | Retrieve an actor's filmography |
-| GET | `/actors/recommendations?ids=` | Generate movie recommendations |
+### Search for stars
 
-Interactive API documentation is available through FastAPI Swagger UI at `/docs`.
+```http
+GET /actors/search?q={name}
+```
+
+Searches TMDB for actors and actresses matching the supplied name.
+
+### Generate recommendations
+
+```http
+GET /actors/recommendations?ids={id1},{id2}
+```
+
+Accepts between 2 and 5 TMDB person IDs and returns the Top 10 ranked movie recommendations.
+
+Example:
+
+```http
+GET /actors/recommendations?ids=6193,10297
+```
 
 ## Running Locally
 
-Create and activate a virtual environment, then install dependencies:
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/muhtasimh/actopedia.git
+cd actopedia
+```
+
+### 2. Create a Python virtual environment
+
+Windows:
+
+```bash
+py -m venv .venv
+.venv\Scripts\activate
+```
+
+### 3. Install backend dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Create a `.env` file containing:
+### 4. Configure environment variables
 
-```text
-TMDB_TOKEN=your_tmdb_token
+Create a `.env` file in the project root and provide the required configuration:
+
+```env
+TMDB_TOKEN=your_tmdb_api_token
 DATABASE_URL=your_postgresql_connection_string
 ```
 
-Start the API:
+### 5. Start the backend
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Then open:
+The API will run at:
+
+```text
+http://127.0.0.1:8000
+```
+
+Interactive FastAPI documentation is available at:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Tests
+### 6. Start the frontend
 
-Run the automated test suite with:
+Open another terminal:
 
 ```bash
-python -m pytest -v
+cd frontend
+npm install
+npm run dev
 ```
 
-The tests mock external TMDB requests and database writes so the API can be tested independently of external services.
+The frontend will be available at:
+
+```text
+http://localhost:5173
+```
+
+## Testing
+
+Run the backend test suite from the project root:
+
+```bash
+py -m pytest -v
+```
+
+GitHub Actions automatically runs the backend tests on pushes and pull requests.
 
 ## Docker
 
-Build the image:
+Build the backend image:
 
 ```bash
 docker build -t actopedia .
 ```
 
-Run the container with environment variables supplied at runtime:
+Run the container with the required environment variables:
 
 ```bash
-docker run --env-file .env -p 8000:8000 actopedia
+docker run -p 8000:8000 --env-file .env actopedia
 ```
 
-## Continuous Integration
+## Project Structure
 
-GitHub Actions automatically installs dependencies and runs the pytest suite on pushes and pull requests.
+```text
+Actopedia/
+├── .github/
+│   └── workflows/
+├── app/
+│   ├── __init__.py
+│   ├── crud.py
+│   ├── database.py
+│   ├── main.py
+│   ├── models.py
+│   └── tmdb.py
+├── frontend/
+│   ├── public/
+│   └── src/
+│       ├── App.css
+│       ├── App.jsx
+│       ├── index.css
+│       └── main.jsx
+├── tests/
+│   └── test_api.py
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
 
-## Security
+## Data Source
 
-API tokens and database credentials are stored in environment variables and excluded from both Git and Docker images.
+Movie, cast, genre, director, rating, popularity, and image data are provided through The Movie Database (TMDB) API.
