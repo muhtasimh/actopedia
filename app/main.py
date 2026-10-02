@@ -6,6 +6,8 @@ from fastapi import FastAPI, Query
 
 from app.tmdb import search_actors, get_actor_movies, get_movie_cast
 
+from app.crud import save_actor, save_movie, save_credit
+
 app = FastAPI(
     title="Actopedia",
     description="Actor discovery and movie matching engine",
@@ -28,13 +30,17 @@ async def actor_search(q: str = Query(min_length=1)):
     actors = []
 
     for person in results:
-        actors.append({
+        actor_data = {
             "id": person["id"],
             "name": person["name"],
             "known_for_department": person.get("known_for_department"),
             "profile_path": person.get("profile_path"),
             "popularity": person.get("popularity")
-        })
+        }
+
+        actors.append(actor_data)
+
+        save_actor(actor_data)
 
     return {
         "query": q,
@@ -49,14 +55,24 @@ async def actor_movies(actor_id: int):
     movies = []
 
     for movie in results:
-        movies.append({
+        movie_data = {
             "id": movie["id"],
             "title": movie["title"],
             "release_date": movie.get("release_date"),
             "character": movie.get("character"),
             "vote_average": movie.get("vote_average"),
+            "vote_count": movie.get("vote_count"),
             "popularity": movie.get("popularity")
-        })
+        }
+
+        movies.append(movie_data)
+
+        save_movie(movie_data)
+        save_credit(
+            actor_id,
+            movie["id"],
+            movie.get("character")
+        )
 
     movies.sort(
         key=lambda movie: movie["popularity"] or 0,
