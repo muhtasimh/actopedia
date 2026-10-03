@@ -4,6 +4,8 @@ Actopedia is a full-stack movie discovery application that recommends movies bas
 
 Rather than ranking movies primarily by popularity or ratings, Actopedia builds profiles of the selected stars and explores their wider collaboration networks to generate a personalized Top 10 using a custom Match Score.
 
+**Live Demo:** https://actopediafrontend.z9.web.core.windows.net/
+
 ## Features
 
 - Search for actors and actresses using The Movie Database (TMDB)
