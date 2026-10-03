@@ -80,7 +80,7 @@ function App() {
     try {
 
       const response = await fetch(
-        `${API_URL}/actors/recommendations?actor_ids=${ids}`
+        `${API_URL}/actors/recommendations?ids=${ids}`
       );
 
       const data = await response.json();
