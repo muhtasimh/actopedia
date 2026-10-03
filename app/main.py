@@ -27,6 +27,7 @@ app.add_middleware(
     allow_origins=[
     "http://localhost:5173",
     "http://localhost:5174",
+    "https://actopediafrontend.z9.web.core.windows.net",
 ],
     allow_credentials=True,
     allow_methods=["*"],
