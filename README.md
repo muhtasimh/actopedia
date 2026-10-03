@@ -4,7 +4,11 @@ Actopedia is a full-stack movie discovery application that recommends movies bas
 
 Rather than ranking movies primarily by popularity or ratings, Actopedia builds profiles of the selected stars and explores their wider collaboration networks to generate a personalized Top 10 using a custom Match Score.
 
-**Live Demo:** https://actopediafrontend.z9.web.core.windows.net/
+## Live Demo
+
+[Open Actopedia](https://actopediafrontend.z9.web.core.windows.net/)
+
+The application is deployed on Microsoft Azure, with the React frontend hosted through Azure Storage and the FastAPI backend and PostgreSQL database running on Azure services.
 
 ## Features
 
