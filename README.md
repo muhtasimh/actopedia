@@ -37,7 +37,6 @@ The application is deployed on Microsoft Azure, with the React frontend hosted t
 - FastAPI
 - SQLAlchemy
 - PostgreSQL
-- HTTPX
 
 ### API
 - The Movie Database (TMDB) API
@@ -101,7 +100,6 @@ The remaining candidates receive a Match Score out of 100 using five weighted si
 
 The 10 highest-scoring movies are returned as the final recommendations.
 
-TMDB ratings, vote counts, and popularity do not directly contribute to the final Match Score.
 
 ## Plot Description Similarity
 
@@ -109,6 +107,6 @@ Plot similarity is calculated using a lightweight text-comparison approach.
 
 Movie descriptions are normalized and tokenized, common words are removed, and the resulting word sets are compared using Jaccard similarity:
 
-`similarity = shared words / total unique words`
+similarity = shared words / total unique words
 
 A candidate movie is compared with descriptions from the selected stars' profile movies, allowing plot information to influence recommendations without requiring a machine-learning model or external AI service.
