@@ -110,3 +110,11 @@ Movie descriptions are normalized and tokenized, common words are removed, and t
 similarity = shared words / total unique words
 
 A candidate movie is compared with descriptions from the selected stars' profile movies, allowing plot information to influence recommendations without requiring a machine-learning model or external AI service.
+
+## Optional Redis caching
+
+The backend caches successful TMDB JSON responses for 60 minutes when the `REDIS_URL` environment variable is configured. This reduces repeated TMDB requests for the same actor searches, movie credits, and movie details. Cache keys include the TMDB path and query parameters. If Redis is not configured or temporarily unavailable, requests continue directly to TMDB.
+
+Set `REDIS_URL` in the backend deployment's environment/application settings using the connection URL supplied by your Redis provider (use TLS where required). Do not commit credentials to Git. No Redis server is required to run the app without caching.
+
+Run `pytest tests/test_cache.py` to check caching behavior. Compare repeated identical API requests with and without Redis configured to measure actual performance; no speedup is claimed until measured.
