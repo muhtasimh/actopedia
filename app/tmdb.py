@@ -29,7 +29,6 @@ async def _tmdb_get(path, params=None):
 
 
 async def search_actors(query: str):
-    url = f"{BASE_URL}/search/person"
 
     params = {
         "query": query,
@@ -43,7 +42,6 @@ async def search_actors(query: str):
 
 
 async def get_actor_movies(actor_id: int):
-    url = f"{BASE_URL}/person/{actor_id}/movie_credits"
 
     params = {
         "language": "en-US"
@@ -54,7 +52,6 @@ async def get_actor_movies(actor_id: int):
 
 
 async def get_movie_cast(movie_id: int):
-    url = f"{BASE_URL}/movie/{movie_id}/credits"
 
     data = await _tmdb_get(f"/movie/{movie_id}/credits")
     return data["cast"]
@@ -68,7 +65,6 @@ async def get_movie_details(movie_id: int):
     and crew information with one TMDB request.
     """
 
-    url = f"{BASE_URL}/movie/{movie_id}"
 
     params = {
         "language": "en-US",
