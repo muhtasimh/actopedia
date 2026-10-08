@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import time
 import re
 
 from collections import Counter, defaultdict
@@ -15,6 +17,8 @@ from app.tmdb import (
 
 from app.crud import save_actor, save_movie, save_credit
 
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Actopedia",
@@ -233,6 +237,15 @@ async def actor_recommendations(
             "error": "Please provide no more than five actor IDs."
         }
 
+    started = time.perf_counter()
+    stage_started = started
+
+    def log_stage(stage, **counts):
+        nonlocal stage_started
+        now = time.perf_counter()
+        logger.info("recommendations stage=%s elapsed=%.2fs total=%.2fs counts=%s", stage, now - stage_started, now - started, counts)
+        stage_started = now
+
     # --------------------------------------------------
     # 1. Load selected actor filmographies
     # --------------------------------------------------
@@ -240,6 +253,8 @@ async def actor_recommendations(
     filmographies = await asyncio.gather(
         *(get_actor_movies(actor_id) for actor_id in actor_ids)
     )
+
+    log_stage("selected_filmographies", actors=len(actor_ids))
 
     selected_movie_actors = defaultdict(set)
     selected_movies = {}
@@ -322,6 +337,8 @@ async def actor_recommendations(
         )
     )
 
+    log_stage("profile_details", movies=len(profile_movie_ids))
+
     genre_counts = Counter()
     director_counts = Counter()
     profile_overviews = []
@@ -400,6 +417,8 @@ async def actor_recommendations(
                         collaborator_id
                     ][actor_id] += 1
 
+    log_stage("collaborator_casts", collaborators=len(collaborator_connections))
+
     # --------------------------------------------------
     # 6. Load collaborator filmographies
     # --------------------------------------------------
@@ -414,6 +433,8 @@ async def actor_recommendations(
             for collaborator_id in collaborator_ids
         )
     )
+
+    log_stage("collaborator_filmographies", collaborators=len(collaborator_ids))
 
     # --------------------------------------------------
     # 7. Build candidate pool
@@ -741,6 +762,8 @@ async def actor_recommendations(
         for movie in candidate_details
     }
 
+    log_stage("finalist_details", finalists=len(enrichment_candidates), candidates=len(candidate_movies))
+
     # --------------------------------------------------
     # 10. FINAL MATCH SCORE
     #
@@ -1038,6 +1061,8 @@ async def actor_recommendations(
         ),
         reverse=True
     )
+
+    log_stage("scoring", recommendations=len(recommendations))
 
     return {
         "actor_ids": actor_ids,
