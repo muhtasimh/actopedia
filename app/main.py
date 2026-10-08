@@ -18,7 +18,7 @@ from app.tmdb import (
 from app.crud import save_actor, save_movie, save_credit
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(
     title="Actopedia",
