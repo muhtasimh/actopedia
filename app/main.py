@@ -12,7 +12,8 @@ from app.tmdb import (
     search_actors,
     get_actor_movies,
     get_movie_cast,
-    get_movie_details
+    get_movie_details,
+    close_http_client
 )
 
 from app.crud import save_actor, save_movie, save_credit
@@ -20,11 +21,17 @@ from app.crud import save_actor, save_movie, save_credit
 
 logger = logging.getLogger("uvicorn.error")
 
+
 app = FastAPI(
     title="Actopedia",
     description="Actor discovery and movie matching engine",
     version="0.5.0"
 )
+
+@app.on_event("shutdown")
+async def shutdown_tmdb_client():
+    await close_http_client()
+
 
 app.add_middleware(
     CORSMiddleware,
