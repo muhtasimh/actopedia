@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import httpx
@@ -9,6 +10,9 @@ load_dotenv()
 BASE_URL = "https://api.themoviedb.org/3"
 TMDB_TOKEN = os.getenv("TMDB_TOKEN")
 
+_client = None
+_request_limit = asyncio.Semaphore(40)
+
 headers = {
     "Authorization": f"Bearer {TMDB_TOKEN}",
     "accept": "application/json"
@@ -16,10 +20,29 @@ headers = {
 
 
 
+def get_http_client():
+    """Reuse TCP/TLS connections across TMDB requests."""
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(
+            timeout=20,
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=40),
+        )
+    return _client
+
+
+async def close_http_client():
+    """Release pooled connections during application shutdown."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
+
 async def _tmdb_get(path, params=None):
     async def fetch():
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.get(
+        async with _request_limit:
+            response = await get_http_client().get(
                 f"{BASE_URL}{path}", headers=headers, params=params
             )
             response.raise_for_status()
