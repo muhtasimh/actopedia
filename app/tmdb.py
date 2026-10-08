@@ -2,6 +2,7 @@ import os
 
 import httpx
 from dotenv import load_dotenv
+from app.cache import get_json
 
 load_dotenv()
 
@@ -14,8 +15,20 @@ headers = {
 }
 
 
+
+async def _tmdb_get(path, params=None):
+    async def fetch():
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(
+                f"{BASE_URL}{path}", headers=headers, params=params
+            )
+            response.raise_for_status()
+            return response.json()
+
+    return await get_json(path, params, fetch)
+
+
 async def search_actors(query: str):
-    url = f"{BASE_URL}/search/person"
 
     params = {
         "query": query,
@@ -24,49 +37,24 @@ async def search_actors(query: str):
         "page": 1
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url,
-            headers=headers,
-            params=params
-        )
-
-        response.raise_for_status()
-
-    return response.json()["results"]
+    data = await _tmdb_get("/search/person", params)
+    return data["results"]
 
 
 async def get_actor_movies(actor_id: int):
-    url = f"{BASE_URL}/person/{actor_id}/movie_credits"
 
     params = {
         "language": "en-US"
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url,
-            headers=headers,
-            params=params
-        )
-
-        response.raise_for_status()
-
-    return response.json()["cast"]
+    data = await _tmdb_get(f"/person/{actor_id}/movie_credits", params)
+    return data["cast"]
 
 
 async def get_movie_cast(movie_id: int):
-    url = f"{BASE_URL}/movie/{movie_id}/credits"
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url,
-            headers=headers
-        )
-
-        response.raise_for_status()
-
-    return response.json()["cast"]
+    data = await _tmdb_get(f"/movie/{movie_id}/credits")
+    return data["cast"]
 
 
 async def get_movie_details(movie_id: int):
@@ -77,23 +65,13 @@ async def get_movie_details(movie_id: int):
     and crew information with one TMDB request.
     """
 
-    url = f"{BASE_URL}/movie/{movie_id}"
 
     params = {
         "language": "en-US",
         "append_to_response": "credits"
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url,
-            headers=headers,
-            params=params
-        )
-
-        response.raise_for_status()
-
-    data = response.json()
+    data = await _tmdb_get(f"/movie/{movie_id}", params)
 
     directors = [
         {
