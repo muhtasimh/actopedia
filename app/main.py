@@ -718,6 +718,8 @@ async def actor_recommendations(
             + description_component * 0.20
         )
 
+    preselection_started = time.perf_counter()
+
     candidate_list = list(
         candidate_movies.values()
     )
@@ -730,6 +732,8 @@ async def actor_recommendations(
     enrichment_candidates = (
         candidate_list[:75]
     )
+
+    logger.info("recommendations preselection elapsed=%.2fs candidates=%d", time.perf_counter() - preselection_started, len(candidate_list))
 
     # --------------------------------------------------
     # 9. Load rich details for the 75 finalists
