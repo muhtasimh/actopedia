@@ -736,12 +736,32 @@ async def actor_recommendations(
     # 9. Load rich details for the 75 finalists
     # --------------------------------------------------
 
+    # Measure individual finalist fetches to distinguish slow TMDB calls
+    # from overhead elsewhere in recommendation generation.
+    finalist_fetch_durations = []
+
+    async def timed_finalist_details(movie_id):
+        fetch_started = time.perf_counter()
+        try:
+            return await get_movie_details(movie_id)
+        finally:
+            finalist_fetch_durations.append(time.perf_counter() - fetch_started)
+
     candidate_details = await asyncio.gather(
-        *(
-            get_movie_details(movie["id"])
-            for movie in enrichment_candidates
-        )
+        *(timed_finalist_details(movie["id"]) for movie in enrichment_candidates)
     )
+
+    if finalist_fetch_durations:
+        ordered_durations = sorted(finalist_fetch_durations)
+        p95_index = max(0, (len(ordered_durations) * 95 + 99) // 100 - 1)
+        logger.info(
+            "recommendations finalist_fetches count=%d min=%.2fs median=%.2fs p95=%.2fs max=%.2fs",
+            len(ordered_durations),
+            ordered_durations[0],
+            ordered_durations[len(ordered_durations) // 2],
+            ordered_durations[p95_index],
+            ordered_durations[-1],
+        )
 
     details_by_id = {
         movie["id"]: movie
