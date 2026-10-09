@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 
 import httpx
 from dotenv import load_dotenv
@@ -39,17 +40,23 @@ async def close_http_client():
         _client = None
 
 
-async def _tmdb_get(path, params=None):
+async def _tmdb_get(path, params=None, timings=None):
     async def fetch():
+        queued_at = time.perf_counter()
         async with _request_limit:
-            response = await get_http_client().get(
-                f"{BASE_URL}{path}", headers=headers, params=params
-            )
-            response.raise_for_status()
-            return response.json()
+            acquired_at = time.perf_counter()
+            try:
+                response = await get_http_client().get(
+                    f"{BASE_URL}{path}", headers=headers, params=params
+                )
+                response.raise_for_status()
+                return response.json()
+            finally:
+                if timings is not None:
+                    timings["semaphore_wait"] = acquired_at - queued_at
+                    timings["http_and_decode"] = time.perf_counter() - acquired_at
 
     return await get_json(path, params, fetch)
-
 
 async def search_actors(query: str):
 
@@ -80,7 +87,7 @@ async def get_movie_cast(movie_id: int):
     return data["cast"]
 
 
-async def get_movie_details(movie_id: int):
+async def get_movie_details(movie_id: int, timings=None):
     """
     Get information used by the recommendation algorithm.
 
@@ -94,7 +101,7 @@ async def get_movie_details(movie_id: int):
         "append_to_response": "credits"
     }
 
-    data = await _tmdb_get(f"/movie/{movie_id}", params)
+    data = await _tmdb_get(f"/movie/{movie_id}", params, timings=timings)
 
     directors = [
         {
