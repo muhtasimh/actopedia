@@ -102,6 +102,18 @@ def strongest_description_similarity(candidate_words, profile_overviews, word_in
     return sum(scores) / min(3, len(profile_overviews))
 
 
+def accumulate_collaborator_connections(exploration_by_actor, casts_by_movie_id, actor_ids):
+    """Reconstruct collaboration counts in actor/movie order, independent of request timing."""
+    connections = defaultdict(lambda: defaultdict(int))
+    for actor_id, movie_ids in exploration_by_actor.items():
+        for movie_id in movie_ids:
+            for person in casts_by_movie_id[movie_id][:15]:
+                collaborator_id = person["id"]
+                if collaborator_id not in actor_ids:
+                    connections[collaborator_id][actor_id] += 1
+    return connections
+
+
 def movie_year(movie):
     release_date = movie.get("release_date") or ""
 
@@ -391,37 +403,51 @@ async def actor_recommendations(
         exploration_by_actor[actor_id] = movie_ids
         unique_movie_ids.update(movie_ids)
 
+    # Start collaborator filmography requests as soon as individual casts arrive.
+    # The graph is still constructed in original actor/movie order below.
     unique_movie_ids = sorted(unique_movie_ids)
-    unique_casts = await asyncio.gather(
-        *(get_movie_cast(movie_id) for movie_id in unique_movie_ids)
-    )
-    casts_by_movie_id = dict(zip(unique_movie_ids, unique_casts))
-
+    movie_to_actors = defaultdict(set)
     for actor_id, movie_ids in exploration_by_actor.items():
         for movie_id in movie_ids:
-            for person in casts_by_movie_id[movie_id][:15]:
+            movie_to_actors[movie_id].add(actor_id)
+
+    async def fetch_cast_with_id(movie_id):
+        return movie_id, await get_movie_cast(movie_id)
+
+    cast_tasks = [
+        asyncio.create_task(fetch_cast_with_id(movie_id))
+        for movie_id in unique_movie_ids
+    ]
+    collaborator_tasks = {}
+    casts_by_movie_id = {}
+    try:
+        for completed in asyncio.as_completed(cast_tasks):
+            movie_id, cast = await completed
+            casts_by_movie_id[movie_id] = cast
+            for person in cast[:15]:
                 collaborator_id = person["id"]
-                if collaborator_id not in actor_ids:
-                    collaborator_connections[collaborator_id][actor_id] += 1
+                if collaborator_id not in actor_ids and collaborator_id not in collaborator_tasks:
+                    collaborator_tasks[collaborator_id] = asyncio.create_task(
+                        get_actor_movies(collaborator_id)
+                    )
 
-    log_stage("collaborator_casts", collaborators=len(collaborator_connections))
-
-    # --------------------------------------------------
-    # 6. Load collaborator filmographies
-    # --------------------------------------------------
-
-    collaborator_ids = list(
-        collaborator_connections.keys()
-    )
-
-    collaborator_filmographies = await asyncio.gather(
-        *(
-            get_actor_movies(collaborator_id)
-            for collaborator_id in collaborator_ids
+        collaborator_connections = accumulate_collaborator_connections(
+            exploration_by_actor, casts_by_movie_id, actor_ids
         )
-    )
 
-    log_stage("collaborator_filmographies", collaborators=len(collaborator_ids))
+        log_stage("collaborator_casts", collaborators=len(collaborator_connections))
+
+        collaborator_ids = list(collaborator_connections.keys())
+        collaborator_filmographies = await asyncio.gather(
+            *(collaborator_tasks[collaborator_id] for collaborator_id in collaborator_ids)
+        )
+        log_stage("collaborator_filmographies", collaborators=len(collaborator_ids))
+    finally:
+        pending = [task for task in (*cast_tasks, *collaborator_tasks.values()) if not task.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
     # Profile details were fetched concurrently with collaborator discovery.
     profile_details = await profile_details_task
@@ -617,6 +643,8 @@ async def actor_recommendations(
     # --------------------------------------------------
 
     profile_word_index = build_profile_word_index(cheap_profile_overviews)
+    # Repeated descriptions are common in TMDB credit data.
+    description_score_cache = {}
 
     def preselection_score(movie):
 
@@ -699,9 +727,12 @@ async def actor_recommendations(
             )
         )
 
-        raw_description = strongest_description_similarity(
-            candidate_words, cheap_profile_overviews, profile_word_index
-        )
+        overview = movie.get("overview", "")
+        if overview not in description_score_cache:
+            description_score_cache[overview] = strongest_description_similarity(
+                candidate_words, cheap_profile_overviews, profile_word_index
+            )
+        raw_description = description_score_cache[overview]
         description_component = min(raw_description * 4, 1)
 
         # Preselection is NOT the final Match Score.
