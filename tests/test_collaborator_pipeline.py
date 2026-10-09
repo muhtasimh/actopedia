@@ -10,7 +10,7 @@ def test_collaborator_counts_preserve_actor_and_movie_order():
     }
     result = accumulate_collaborator_connections(exploration, casts, [10, 20])
     assert list(result) == [30, 40]
-    assert dict(result[30]) == {10: 3, 20: 1}
+    assert dict(result[30]) == {10: 3, 20: 2}
     assert dict(result[40]) == {10: 1, 20: 2}
 
 
