@@ -81,6 +81,27 @@ def jaccard_similarity(first, second):
     return len(first & second) / len(union)
 
 
+def build_profile_word_index(profile_overviews):
+    word_index = defaultdict(set)
+    for index, words in enumerate(profile_overviews):
+        for word in words:
+            word_index[word].add(index)
+    return word_index
+
+
+def strongest_description_similarity(candidate_words, profile_overviews, word_index):
+    if not profile_overviews:
+        return 0
+    matching_indices = set()
+    for word in candidate_words:
+        matching_indices.update(word_index.get(word, ()))
+    scores = sorted(
+        (jaccard_similarity(candidate_words, profile_overviews[i]) for i in matching_indices),
+        reverse=True,
+    )[:3]
+    return sum(scores) / min(3, len(profile_overviews))
+
+
 def movie_year(movie):
     release_date = movie.get("release_date") or ""
 
@@ -595,6 +616,8 @@ async def actor_recommendations(
     # this information came with movie-credit requests.
     # --------------------------------------------------
 
+    profile_word_index = build_profile_word_index(cheap_profile_overviews)
+
     def preselection_score(movie):
 
         # ----------------------------
@@ -676,34 +699,10 @@ async def actor_recommendations(
             )
         )
 
-        similarities = sorted(
-            (
-                jaccard_similarity(
-                    candidate_words,
-                    profile_words
-                )
-                for profile_words
-                in cheap_profile_overviews
-            ),
-            reverse=True
+        raw_description = strongest_description_similarity(
+            candidate_words, cheap_profile_overviews, profile_word_index
         )
-
-        strongest = similarities[:3]
-
-        if strongest:
-
-            raw_description = (
-                sum(strongest)
-                / len(strongest)
-            )
-
-            description_component = min(
-                raw_description * 4,
-                1
-            )
-
-        else:
-            description_component = 0
+        description_component = min(raw_description * 4, 1)
 
         # Preselection is NOT the final Match Score.
         #
@@ -719,6 +718,8 @@ async def actor_recommendations(
             + description_component * 0.20
         )
 
+    preselection_started = time.perf_counter()
+
     candidate_list = list(
         candidate_movies.values()
     )
@@ -731,6 +732,8 @@ async def actor_recommendations(
     enrichment_candidates = (
         candidate_list[:75]
     )
+
+    logger.info("recommendations preselection elapsed=%.2fs candidates=%d", time.perf_counter() - preselection_started, len(candidate_list))
 
     # --------------------------------------------------
     # 9. Load rich details for the 75 finalists
