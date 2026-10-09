@@ -739,13 +739,17 @@ async def actor_recommendations(
     # Measure individual finalist fetches to distinguish slow TMDB calls
     # from overhead elsewhere in recommendation generation.
     finalist_fetch_durations = []
+    finalist_network_timings = []
 
     async def timed_finalist_details(movie_id):
         fetch_started = time.perf_counter()
+        timing = {}
         try:
-            return await get_movie_details(movie_id)
+            return await get_movie_details(movie_id, timings=timing)
         finally:
             finalist_fetch_durations.append(time.perf_counter() - fetch_started)
+            if timing:
+                finalist_network_timings.append(timing)
 
     candidate_details = await asyncio.gather(
         *(timed_finalist_details(movie["id"]) for movie in enrichment_candidates)
@@ -761,6 +765,16 @@ async def actor_recommendations(
             ordered_durations[len(ordered_durations) // 2],
             ordered_durations[p95_index],
             ordered_durations[-1],
+        )
+
+    if finalist_network_timings:
+        waits = sorted(t["semaphore_wait"] for t in finalist_network_timings)
+        http_times = sorted(t["http_and_decode"] for t in finalist_network_timings)
+        logger.info(
+            "recommendations finalist_network count=%d semaphore_wait_max=%.2fs "
+            "semaphore_wait_median=%.2fs http_max=%.2fs http_median=%.2fs",
+            len(waits), waits[-1], waits[len(waits) // 2],
+            http_times[-1], http_times[len(http_times) // 2],
         )
 
     details_by_id = {
