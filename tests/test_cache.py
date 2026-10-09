@@ -2,8 +2,18 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import redis.asyncio as redis
+import pytest
+
+from app.cache import _memory
 
 from app.cache import cache_key, get_json
+
+
+@pytest.fixture(autouse=True)
+def clear_memory_cache():
+    _memory.clear()
+    yield
+    _memory.clear()
 
 
 def test_cache_key_ignores_param_order():
