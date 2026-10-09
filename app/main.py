@@ -344,48 +344,8 @@ async def actor_recommendations(
     # profile scoring.
     # --------------------------------------------------
 
-    profile_details = await asyncio.gather(
-        *(
-            get_movie_details(movie_id)
-            for movie_id in profile_movie_ids
-        )
-    )
-
-    log_stage("profile_details", movies=len(profile_movie_ids))
-
-    genre_counts = Counter()
-    director_counts = Counter()
-    profile_overviews = []
-
-    for movie in profile_details:
-
-        for genre in movie["genres"]:
-            genre_counts[
-                genre["id"]
-            ] += 1
-
-        for director in movie["directors"]:
-            director_counts[
-                director["id"]
-            ] += 1
-
-        words = tokenize(
-            movie["overview"]
-        )
-
-        if words:
-            profile_overviews.append(
-                words
-            )
-
-    max_genre_count = max(
-        genre_counts.values(),
-        default=1
-    )
-
-    max_director_count = max(
-        director_counts.values(),
-        default=1
+    profile_details_task = asyncio.gather(
+        *(get_movie_details(movie_id) for movie_id in profile_movie_ids)
     )
 
     # --------------------------------------------------
@@ -441,6 +401,26 @@ async def actor_recommendations(
     )
 
     log_stage("collaborator_filmographies", collaborators=len(collaborator_ids))
+
+    # Profile details were fetched concurrently with collaborator discovery.
+    profile_details = await profile_details_task
+    log_stage("profile_details", movies=len(profile_movie_ids))
+
+    genre_counts = Counter()
+    director_counts = Counter()
+    profile_overviews = []
+
+    for movie in profile_details:
+        for genre in movie["genres"]:
+            genre_counts[genre["id"]] += 1
+        for director in movie["directors"]:
+            director_counts[director["id"]] += 1
+        words = tokenize(movie["overview"])
+        if words:
+            profile_overviews.append(words)
+
+    max_genre_count = max(genre_counts.values(), default=1)
+    max_director_count = max(director_counts.values(), default=1)
 
     # --------------------------------------------------
     # 7. Build candidate pool
