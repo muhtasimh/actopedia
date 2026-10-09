@@ -11,7 +11,7 @@ BASE_URL = "https://api.themoviedb.org/3"
 TMDB_TOKEN = os.getenv("TMDB_TOKEN")
 
 _client = None
-_request_limit = asyncio.Semaphore(40)
+_request_limit = asyncio.Semaphore(80)
 
 headers = {
     "Authorization": f"Bearer {TMDB_TOKEN}",
@@ -26,7 +26,7 @@ def get_http_client():
     if _client is None or _client.is_closed:
         _client = httpx.AsyncClient(
             timeout=20,
-            limits=httpx.Limits(max_connections=50, max_keepalive_connections=40),
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=80),
         )
     return _client
 
