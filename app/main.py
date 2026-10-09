@@ -17,6 +17,7 @@ from app.tmdb import (
 )
 
 from app.crud import save_actor, save_movie, save_credit
+from app.cache import cache_stats
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -246,10 +247,16 @@ async def actor_recommendations(
 
     started = time.perf_counter()
     stage_started = started
+    previous_cache_stats = cache_stats()
 
     def log_stage(stage, **counts):
-        nonlocal stage_started
+        nonlocal stage_started, previous_cache_stats
         now = time.perf_counter()
+        current_cache_stats = cache_stats()
+        cache_delta = {key: current_cache_stats.get(key, 0) - previous_cache_stats.get(key, 0) for key in ('hits', 'misses', 'evictions', 'expired')}
+        cache_delta['entries'] = current_cache_stats['entries']
+        logger.info('recommendations cache stage=%s stats=%s', stage, cache_delta)
+        previous_cache_stats = current_cache_stats
         logger.info("recommendations stage=%s elapsed=%.2fs total=%.2fs counts=%s", stage, now - stage_started, now - started, counts)
         stage_started = now
 

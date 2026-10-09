@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 
 import redis.asyncio as redis
 
@@ -17,6 +17,11 @@ _client = None
 _client_url = None
 _memory = OrderedDict()
 _MAX_MEMORY_ENTRIES = 2000
+_cache_stats = Counter()
+
+
+def cache_stats():
+    return dict(_cache_stats, entries=len(_memory))
 
 
 def get_client():
@@ -45,6 +50,7 @@ def _remember(key, data, ttl):
     _memory.move_to_end(key)
     while len(_memory) > _MAX_MEMORY_ENTRIES:
         _memory.popitem(last=False)
+        _cache_stats['evictions'] += 1
 
 
 async def get_json(path, params, fetch, ttl=3600):
@@ -55,9 +61,12 @@ async def get_json(path, params, fetch, ttl=3600):
         expires_at, data = entry
         if time.monotonic() < expires_at:
             _memory.move_to_end(key)
+            _cache_stats['hits'] += 1
             return data
         del _memory[key]
+        _cache_stats['expired'] += 1
 
+    _cache_stats['misses'] += 1
     client = get_client()
     if client is not None:
         try:
