@@ -396,40 +396,32 @@ async def actor_recommendations(
         lambda: defaultdict(int)
     )
 
-    for actor_id, movies in zip(
-        actor_ids,
-        filmographies
-    ):
-
-        # We can still use popular films here because
-        # this step is only discovering collaborators,
-        # not assigning recommendation points.
+    # Deduplicate cast lookups shared by the selected actors.
+    # Keep the original per-actor collaborator counts unchanged.
+    exploration_by_actor = {}
+    unique_movie_ids = set()
+    for actor_id, movies in zip(actor_ids, filmographies):
         exploration_movies = sorted(
             movies,
-            key=lambda movie: (
-                movie.get("popularity") or 0
-            ),
+            key=lambda movie: (movie.get("popularity") or 0),
             reverse=True
         )[:8]
+        movie_ids = [movie["id"] for movie in exploration_movies]
+        exploration_by_actor[actor_id] = movie_ids
+        unique_movie_ids.update(movie_ids)
 
-        casts = await asyncio.gather(
-            *(
-                get_movie_cast(movie["id"])
-                for movie in exploration_movies
-            )
-        )
+    unique_movie_ids = sorted(unique_movie_ids)
+    unique_casts = await asyncio.gather(
+        *(get_movie_cast(movie_id) for movie_id in unique_movie_ids)
+    )
+    casts_by_movie_id = dict(zip(unique_movie_ids, unique_casts))
 
-        for cast in casts:
-
-            for person in cast[:15]:
-
+    for actor_id, movie_ids in exploration_by_actor.items():
+        for movie_id in movie_ids:
+            for person in casts_by_movie_id[movie_id][:15]:
                 collaborator_id = person["id"]
-
                 if collaborator_id not in actor_ids:
-
-                    collaborator_connections[
-                        collaborator_id
-                    ][actor_id] += 1
+                    collaborator_connections[collaborator_id][actor_id] += 1
 
     log_stage("collaborator_casts", collaborators=len(collaborator_connections))
 
