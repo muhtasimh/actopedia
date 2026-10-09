@@ -102,6 +102,18 @@ def strongest_description_similarity(candidate_words, profile_overviews, word_in
     return sum(scores) / min(3, len(profile_overviews))
 
 
+def accumulate_collaborator_connections(exploration_by_actor, casts_by_movie_id, actor_ids):
+    """Reconstruct collaboration counts in actor/movie order, independent of request timing."""
+    connections = defaultdict(lambda: defaultdict(int))
+    for actor_id, movie_ids in exploration_by_actor.items():
+        for movie_id in movie_ids:
+            for person in casts_by_movie_id[movie_id][:15]:
+                collaborator_id = person["id"]
+                if collaborator_id not in actor_ids:
+                    connections[collaborator_id][actor_id] += 1
+    return connections
+
+
 def movie_year(movie):
     release_date = movie.get("release_date") or ""
 
@@ -419,12 +431,9 @@ async def actor_recommendations(
                         get_actor_movies(collaborator_id)
                     )
 
-        for actor_id, movie_ids in exploration_by_actor.items():
-            for movie_id in movie_ids:
-                for person in casts_by_movie_id[movie_id][:15]:
-                    collaborator_id = person["id"]
-                    if collaborator_id not in actor_ids:
-                        collaborator_connections[collaborator_id][actor_id] += 1
+        collaborator_connections = accumulate_collaborator_connections(
+            exploration_by_actor, casts_by_movie_id, actor_ids
+        )
 
         log_stage("collaborator_casts", collaborators=len(collaborator_connections))
 
